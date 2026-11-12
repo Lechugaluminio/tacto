@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MARTE · telemanipulación cooperativa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="sonda.css">
+</head>
+<body>
+<!-- Pantalla del computador: solo el brazo. Los controles están en el teléfono (control.html). -->
+<section id="visor" aria-label="Cámara del brazo de muestreo">
+  <canvas id="feed" aria-hidden="true"></canvas>
+  <canvas id="hud" aria-hidden="true"></canvas>
+
+  <div id="marca">
+    <b>MARTE</b>
+    <span>telemanipulación cooperativa · brazo de muestreo</span>
+    <div class="linea"><span id="enlace" class="estado" role="status" aria-live="polite">ENLACE · conectando</span><span id="rtt"></span></div>
+    <div id="ops" class="ops" aria-label="Operadores"></div>
+  </div>
+
+  <div id="unir" title="Clic o Q para ver el QR en grande">
+    <img id="qr2" alt="Código QR para operar el brazo desde el teléfono" hidden>
+    <div class="txt"><b>ESCANEA PARA OPERAR</b><span>sala <i id="salaCod">—</i></span></div>
+  </div>
+
+  <div id="sello" aria-hidden="true">CAM-BRAZO · HAZCAM IZQ · SOL <span id="sol">0</span> · MUESTRAS <span id="vOk">0</span></div>
+
+  <!-- consola inferior: ficha de la última muestra guardada en el canasto -->
+  <div id="consola" hidden aria-live="polite">
+    <canvas id="fImg" width="112" height="112" aria-hidden="true"></canvas>
+    <div class="fDatos">
+      <p class="k">ÚLTIMA MUESTRA · CANASTO</p>
+      <b id="fTipo"></b>
+      <span id="fId"></span>
+      <div id="fComp"></div>
+      <p class="k2">composición estimada · simulación</p>
+    </div>
+    <div class="fTot"><span>MUESTRAS</span><b id="fN">0</b></div>
+  </div>
+  <div id="aviso" role="status" aria-live="polite"></div>
+  <button id="fsBtn" type="button" title="Pantalla completa (F)" aria-label="Pantalla completa">⤢</button>
+
+  <div id="arranque">
+    <button id="iniciar" type="button" class="primario">INICIAR ENLACE</button>
+    <p>activa el sonido · usa audífonos o parlantes</p>
+  </div>
+</section>
+
+<!-- QR grande (Q) -->
+<div id="inicio" role="dialog" aria-labelledby="inicioT" hidden>
+  <div class="caja">
+    <p class="kicker">SONDA DE MUESTREO · JEZERO</p>
+    <h1 id="inicioT">MARTE</h1>
+    <p class="lema">Un brazo, dos manos, una sola señal.<br>La máquina solo obedece cuando ustedes se ponen de acuerdo.</p>
+    <div class="unirG">
+      <img id="qr" alt="Código QR para conectar el teléfono" hidden>
+      <div><p>Escanea con <b>uno o dos teléfonos</b> (máximo dos): uno mueve el brazo, el otro la garra.</p><code id="phoneUrl">…</code></div>
+    </div>
+    <button id="cerrarQR" type="button" class="primario">VOLVER AL BRAZO</button>
+  </div>
+</div>
+
+<!-- Panel de prueba (D): oculto en la presentación -->
+<aside id="prueba" hidden aria-label="Panel de prueba">
+  <h2>Sala</h2>
+  <div class="fila"><input id="salaIn" size="8" autocomplete="off" spellcheck="false" aria-label="Sala"><button id="salaNueva" type="button">nueva</button></div>
+  <code id="phoneUrl2" class="url">…</code>
+  <h2>Telemetría</h2>
+  <div class="medidor"><i id="mInt"></i></div>
+  <div class="fila"><span>interferencia</span><b id="vInt">0 %</b></div>
+  <div class="fila"><span>alcance</span><b id="vAlc">–</b></div>
+  <div class="fila"><span>giro</span><b id="vGiro">–</b></div>
+  <div class="fila"><span>pinza</span><b id="vPinza">–</b></div>
+  <div class="fila"><span>fuerza</span><b id="vFuerza">–</b></div>
+  <div class="fila"><span>lente</span><b id="vLente">–</b></div>
+  <h2>Simular sin teléfono</h2>
+  <label><input type="checkbox" id="raton"> Ratón como operador</label>
+  <label><input type="checkbox" id="eco"> Operador fantasma (copia al ratón con error)</label>
+  <p class="nota"><kbd>Q</kbd> QR grande · <kbd>A</kbd> avanzar · <kbd>C</kbd> calibrar · <kbd>F</kbd> pantalla completa · <kbd>D</kbd> este panel</p>
+  <div id="sonidosInfo" class="nota"></div>
+</aside>
+
+<script src="config.js"></script>
+<script src="tacto.js"></script>
+<script src="sonda.js"></script>
+</body>
+</html>

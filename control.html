@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no,maximum-scale=1">
+<meta name="theme-color" content="#0b0b0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.webmanifest">
+<title>MARTE · consola de operador</title>
+<link rel="stylesheet" href="ui.css">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;700&family=Space+Grotesk:wght@700&display=swap" rel="stylesheet">
+<style>
+  /* MARTE: misma gráfica que la experiencia (index.html). El color de acento lo asigna la experiencia: A óxido, B cian. */
+  :root { --bg: #0b0b0a; --bg-2: #141412; --card: #141412; --card-2: #1c1c19; --line: #2c2b27; --line-2: #45433d; --fg: #e9e4d8; --mut: #8f8a7e;
+          --rol: #e9e4d8; --vio: var(--rol); --vio-2: var(--rol); --neo: var(--rol); --neo-ink: #0b0b0a; --font: "IBM Plex Mono", ui-monospace, monospace; --r-s: 2px; --r-m: 2px; --r-l: 2px; }
+  h1 { font: 700 28px/1 "Space Grotesk", "IBM Plex Mono", sans-serif; letter-spacing: .3em; }
+  h1 span { display: block; font: 500 11px "IBM Plex Mono", monospace; letter-spacing: .14em; color: var(--mut); margin-top: 8px; }
+  #surface { background: repeating-linear-gradient(0deg, transparent 0 39px, #ffffff08 39px 40px), repeating-linear-gradient(90deg, transparent 0 39px, #ffffff08 39px 40px), #0e0e0c !important; border-color: var(--rol) !important; }
+  #rol { font-weight: 700; letter-spacing: .12em; color: var(--rol); }
+  /* con dos operadores, la pantalla táctil toma el color de la parte del robot que controla */
+  body[data-parte="brazo"] #surface { background: repeating-linear-gradient(0deg, transparent 0 39px, #00000014 39px 40px), repeating-linear-gradient(90deg, transparent 0 39px, #00000014 39px 40px), #ff8a1f !important; border-color: #ffd2a6 !important; }
+  body[data-parte="garra"] #surface { background: repeating-linear-gradient(0deg, transparent 0 39px, #ffffff10 39px 40px), repeating-linear-gradient(90deg, transparent 0 39px, #ffffff10 39px 40px), #1d2f6f !important; border-color: #9db4ff !important; }
+  body[data-parte="lleno"] #surface { background: #1a1917 !important; border-color: #45433d !important; } body[data-parte="lleno"] #parteTxt { color: #8f8a7e; bottom: 45%; }
+  #acciones { display: flex; gap: 8px; }
+  #cambiar { flex: 0 0 34%; padding: 10px 6px; font: 700 18px "IBM Plex Mono", monospace; color: #e9e4d8; background: #1c1c19; border: 1px solid #45433d; border-radius: 2px; }
+  #cambiar small { display: block; font-weight: 400; font-size: 10px; letter-spacing: .04em; margin-top: 2px; }
+  #cambiar:active { background: #2a2a26; } #cambiar:disabled { opacity: .4; }
+  #avanzar { flex: 1; width: 100%; padding: 12px; font: 700 15px "IBM Plex Mono", monospace; letter-spacing: .3em; color: #0b0b0a; background: #e9e4d8; border: 0; border-radius: 2px; }
+  #avanzar small { display: block; font-weight: 400; font-size: 10px; letter-spacing: .06em; margin-top: 2px; }
+  #avanzar:active { background: #ff8a1f; } #avanzar:disabled { opacity: .4; }
+  #surface.avanzando { animation: rodar 110ms linear infinite; filter: brightness(.55); }
+  #surface.pulso { animation: pulso 260ms ease-out; } @keyframes pulso { 0% { box-shadow: inset 0 0 0 6px #ffffffaa; } 100% { box-shadow: inset 0 0 0 0 #ffffff00; } }
+  @keyframes rodar { 0% { transform: translate(0, 0); } 25% { transform: translate(1.5px, -1px); } 50% { transform: translate(-1px, 1.5px); } 75% { transform: translate(1px, 1px); } 100% { transform: translate(0, 0); } }
+  @media (prefers-reduced-motion: reduce) { #surface.avanzando { animation: none; } }
+  #parteTxt { position: absolute; left: 0; right: 0; bottom: 14px; text-align: center; font: 700 12px/1.5 "IBM Plex Mono", monospace; letter-spacing: .14em; pointer-events: none; padding: 0 16px; }
+  body[data-parte="brazo"] #parteTxt { color: #2a1400; } body[data-parte="garra"] #parteTxt { color: #dbe4ff; }
+  #parteTxt small { display: block; font-weight: 400; letter-spacing: .04em; opacity: .85; }
+  #hint { line-height: 1.6; font-size: 13px !important; }
+  .pantalla { color: var(--mut); font-size: 12px; } .pantalla a { color: var(--fg); }
+  .mod[aria-pressed="true"], .mod.active { background: var(--card-2) !important; box-shadow: inset 0 0 0 1px var(--rol) !important; border-color: var(--rol) !important; }
+</style>
+<style>
+  * { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+  html, body { font-size: 16px; overscroll-behavior: none; user-select: none; -webkit-user-select: none; }
+  body { display: flex; flex-direction: column; gap: var(--sp-3); padding: max(var(--sp-3), env(safe-area-inset-top)) max(var(--sp-3), env(safe-area-inset-right)) max(var(--sp-3), env(safe-area-inset-bottom)) max(var(--sp-3), env(safe-area-inset-left)); }
+  input { width: 100%; min-height: 48px; padding: 12px 14px; border-radius: var(--r-m); background: var(--bg-2); user-select: text; -webkit-user-select: text; font-size: 16px; /* 16px evita el zoom de iOS */ }
+  label { font-size: 13px; font-weight: 500; }
+  button { min-height: 48px; border-radius: var(--r-m); padding: 12px; font-weight: 600; }
+  #join { display: flex; flex-direction: column; gap: var(--sp-3); margin: auto 0; max-width: 460px; width: 100%; align-self: center; }
+  #join .field { display: flex; flex-direction: column; gap: 6px; }
+  #join .note { color: var(--mut); font-size: 13px; line-height: 1.5; }
+  #go { margin-top: var(--sp-2); font-size: 17px; }
+  #run { display: none; flex: 1; min-height: 0; flex-direction: column; gap: var(--sp-3); }
+  #bar { display: flex; justify-content: space-between; align-items: center; color: var(--mut); font-size: 13px; gap: var(--sp-2); padding: 0 var(--sp-1); }
+  #bar { background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; }
+  #st { font-weight: 600; } #st.on { color: var(--ok); } #st.warn { color: var(--warn); }
+  #surface { position: relative; flex: 1; min-height: 0; border-radius: var(--r-l); border: 1px solid var(--line-2); overflow: hidden; touch-action: none;
+             background: radial-gradient(circle at 50% 40%, #2a1e46, #0d0915 72%); }
+  #cv { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  #hud { position: absolute; left: 12px; top: 10px; right: 12px; font: 12px/1.5 var(--mono); color: #d8d2ee; pointer-events: none; white-space: pre; text-shadow: 0 1px 2px #000; overflow: hidden; }
+  #hint { position: absolute; inset: 0; display: grid; place-items: center; color: var(--mut); pointer-events: none; text-align: center; padding: 0 32px; font-size: 15px; }
+  #mods { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--sp-2); }
+  .mod { background: var(--card); border: 1px solid var(--line); color: var(--mut); padding: 10px 4px; font-size: 14px; font-weight: 500; min-height: 56px; }
+  .mod[aria-pressed="true"], .mod.active { border-color: var(--vio-2); color: var(--fg); background: #271c42; box-shadow: inset 0 0 0 1px var(--vio); }
+  .mod { display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .mod::before { content: "APAGADO"; font-size: 9px; letter-spacing: .12em; font-weight: 700; color: var(--mut); margin-bottom: 2px; }
+  .mod[aria-pressed="true"]::before { content: "ACTIVO"; color: var(--neo); }
+  #surface:active { border-color: var(--vio-2); }
+  .mod small { display: block; font-weight: 400; font-size: 11px; margin-top: 2px; font-variant-numeric: tabular-nums; color: var(--mut); }
+  .mod.active small { color: var(--neo); }
+  .msg { font-size: 13px; }
+  @media (max-height: 520px) { #mods { grid-template-columns: repeat(2, 1fr); } .mod { min-height: 44px; padding: 6px 4px; } #hud { font-size: 11px; } }
+</style>
+</head>
+<body>
+  <div id="join" class="card">
+    <h1>MARTE<span>consola de operador · brazo de muestreo</span></h1>
+    <div class="field"><label for="name">Tu nombre</label>
+    <input id="name" autocomplete="off" autocapitalize="off" maxlength="24" placeholder="ej: ana"></div>
+    <div class="field"><label for="sala">Sala (la muestra la experiencia en el computador)</label>
+    <input id="sala" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="24" placeholder="ej: k7m2xq"></div>
+    <button id="go" class="primary">Conectar</button>
+    <div class="msg" id="err" role="alert"></div>
+    <div class="note">Acepta el permiso de movimiento y deja la pantalla encendida. Sostén el teléfono en tu postura cómoda al conectar: esa postura será el cero. En iPhone, "Añadir a pantalla de inicio" evita los gestos del borde.</div>
+    <div class="pantalla">¿Eres la pantalla principal? Abre <a href="./">la página de inicio</a> en el computador.</div>
+  </div>
+
+  <div id="run">
+    <div id="bar"><span id="st" role="status" aria-live="polite">Conectando…</span><span id="rol">esperando rol</span><span id="info"></span></div>
+    <div id="surface"><canvas id="cv" aria-hidden="true"></canvas><div id="hud" aria-hidden="true"></div><div id="parteTxt" aria-live="polite"></div><div id="hint">Inclina el teléfono para mover el brazo<br>Dos dedos: júntalos para cerrar la garra, sepáralos para abrir<br>Toca con un tercer dedo: bloquea la garra y toma la roca<br>Separa los dedos sobre el canasto: suelta la roca<br>Sopla al micrófono o arrastra un dedo rápido: limpia el lente</div></div>
+    <div id="acciones"><button id="avanzar" type="button">AVANZAR ▸<small>llevar la sonda a otro punto del cráter</small></button><button id="cambiar" type="button" hidden>⇄<small>cambiar brazo / garra</small></button></div>
+    <div id="mods">
+      <button class="mod" id="m-motion" aria-pressed="false">Giro<small id="v-motion">–</small></button>
+      <button class="mod" id="m-mic" aria-pressed="false">Micrófono · soplar<small id="v-mic">–</small></button>
+    </div>
+    <div class="msg" id="err2" role="alert"></div>
+  </div>
+
+<script src="config.js"></script>
+<script src="tacto.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch {} return null; };
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100, r3 = v => Math.round(v * 1000) / 1000;
+
+const Q = new URLSearchParams(location.search);
+$('#name').value = ls('tacto.name') || '';
+$('#sala').value = Tacto.clean(Q.get('sala')) || Tacto.clean(ls('tacto.sala')) || '';
+
+let client = null, base = '', name = '', sala = '';
+const dev = ls('tacto.dev') || (ls('tacto.dev', Tacto.rand(6)), ls('tacto.dev'));
+const pub = (kind, obj, qos = 0, retain = false) => client && client.connected && client.publish(`${base}/${kind}`, JSON.stringify(obj), { qos, retain });
+
+// ---------- capacidades detectadas (presión y diámetro dependen del teléfono) ----------
+const S = { f: { min: 9, max: -1, n: 0 }, d: { min: 1e9, max: -1, n: 0 } };
+const quality = (s, eps) => (!s.n ? 'sin datos aún' : s.max <= 0 ? 'sin dato' : s.n > 20 && s.max - s.min < eps ? 'constante' : 'variable');
+const caps = () => ({ presion: quality(S.f, 0.02), diametro: quality(S.d, 1), tacto: 'ontouchstart' in window ? 'touch' : 'puntero' });
+let lastCaps = '';
+function publishStatus() { pub('status', { online: true, name, caps: { ...caps(), motion: motionOn, mic: !!micStream, cam: !!camStream } }, 1, true); }
+
+// ---------- conexión MQTT ----------
+async function connect() {
+  base = `tacto/${sala}/${dev}`;
+  const will = { topic: `${base}/status`, payload: JSON.stringify({ online: false, name }), qos: 1, retain: true };
+  const o = await Tacto.open({ clientId: 'tel-' + dev, will });
+  client = o.client;
+  const CFGB = (window.TACTO_CONFIG || {}).broker;
+  const where = /^wss?:\/\/(localhost|\d+\.\d+\.\d+\.\d+)/.test(o.broker) ? 'broker local' : o.broker === CFGB ? 'broker EMQX' : 'broker público';
+  $('#info').textContent = `sala ${sala} · ${where}`;
+  client.on('connect', () => {
+    $('#st').textContent = '● conectado'; $('#st').className = 'on';
+    client.subscribe(`${base}/cmd`); publishStatus();
+  });
+  client.on('reconnect', () => { $('#st').textContent = 'Reconectando…'; $('#st').className = 'warn'; });
+  client.on('offline', () => { $('#st').textContent = 'Sin conexión'; $('#st').className = 'warn'; });
+  client.on('error', e => { $('#err2').textContent = 'MQTT: ' + (e.message || e); });
+  client.on('message', (t, p) => { // la experiencia mide la latencia: respondemos al instante
+    try { const m = JSON.parse(p.toString()); if (m.ping != null) pub('pong', { t: m.ping });
+      if (m.vibrar && navigator.vibrate) navigator.vibrate(m.vibrar); // vibración háptica por evento (contacto, bloqueo, canasto, avance)
+      if (m.vibrar && !m.avanzando) { surf.classList.remove('pulso'); void surf.offsetWidth; surf.classList.add('pulso'); } // en iPhone, sin vibración, un destello
+      if (m.avanzando) { // la sonda avanza: la pantalla tiembla y AVANZAR queda bloqueado
+        surf.classList.add('avanzando'); clearTimeout(window._tAv); window._tAv = setTimeout(() => surf.classList.remove('avanzando'), (m.avanzando || 3) * 1000);
+        $('#avanzar').disabled = true; setTimeout(() => { $('#avanzar').disabled = false; }, (m.avanzando || 3) * 1000 + 500);
+      }
+      if (m.lleno) { document.body.dataset.parte = 'lleno'; $('#rol').textContent = 'SALA LLENA'; $('#hint').style.display = 'none';
+        $('#parteTxt').innerHTML = 'YA HAY DOS OPERADORES<small>espera a que alguien salga; entrarás solo</small>'; }
+      if (m.rol) { // rol y parte del robot asignados por la experiencia
+        const parte = m.parte || 'todo'; document.body.dataset.parte = parte; if (parte !== 'todo') $('#hint').style.display = 'none';
+        $('#cambiar').hidden = parte === 'todo';
+        $('#rol').textContent = 'OPERADOR ' + m.rol + (parte === 'todo' ? '' : ' · ' + parte.toUpperCase());
+        document.documentElement.style.setProperty('--rol', m.color || '#e9e4d8');
+        $('#parteTxt').innerHTML = parte === 'brazo' ? 'CONTROLAS EL BRAZO<small>inclina el teléfono para llevarlo</small>'
+          : parte === 'garra' ? 'CONTROLAS LA GARRA<small>dos dedos abren y cierran · tercer dedo bloquea · tu inclinación mueve tu mira</small>' : '';
+      }
+    } catch {}
+  });
+}
+
+// ---------- tacto ----------
+const surf = $('#surface'), cv = $('#cv'), g = cv.getContext('2d');
+let cur = { n: 0, p: [], ar: 1 }, lastN = 0, queued = false;
+function fit() { const d = devicePixelRatio || 1, r = surf.getBoundingClientRect(); cv.width = r.width * d; cv.height = r.height * d; g.setTransform(d, 0, 0, d, 0, 0); }
+addEventListener('resize', fit);
+
+function setTouches(p, r) {
+  cur = { n: p.length, p, ar: r3(r.width / r.height) };
+  for (const z of p) {
+    S.f.n++; S.f.min = Math.min(S.f.min, z.f); S.f.max = Math.max(S.f.max, z.f);
+    S.d.n++; S.d.min = Math.min(S.d.min, z.d); S.d.max = Math.max(S.d.max, z.d);
+  }
+  if (p.length) $('#hint').style.display = 'none';
+  if (cur.n !== lastN) { lastN = cur.n; sendTouch(1); } // cambios de cantidad de dedos: entrega garantizada
+  else if (!queued) { queued = true; requestAnimationFrame(() => { queued = false; sendTouch(0); }); } // movimiento: hasta ~60 por segundo
+}
+const sendTouch = qos => pub('touch', { t: Date.now(), n: cur.n, ar: cur.ar, p: cur.p.map(z => ({ i: z.i, x: r3(z.x), y: r3(z.y), f: r3(z.f), d: Math.round(z.d) })) }, qos);
+
+// Dedos (Touch Events: traen presión y radio de contacto)
+const slots = new Map(); // identifier -> casilla 1..5 (estable mientras el dedo siga apoyado)
+function slotFor(id) {
+  if (slots.has(id)) return slots.get(id);
+  const used = new Set(slots.values());
+  for (let s = 1; s <= 5; s++) if (!used.has(s)) { slots.set(id, s); return s; }
+  return null;
+}
+function onTouch(e) {
+  e.preventDefault();
+  const r = surf.getBoundingClientRect(), list = Array.from(e.targetTouches), ids = new Set(list.map(t => t.identifier));
+  for (const id of [...slots.keys()]) if (!ids.has(id)) slots.delete(id);
+  const p = [];
+  for (const t of list) {
+    const i = slotFor(t.identifier); if (!i) continue;
+    const rx = t.radiusX ?? t.webkitRadiusX ?? 0, ry = t.radiusY ?? t.webkitRadiusY ?? 0;
+    p.push({ i, x: clamp((t.clientX - r.left) / r.width), y: clamp((t.clientY - r.top) / r.height), f: t.force ?? t.webkitForce ?? 0, d: rx + ry }); // diámetro medio = rx + ry
+  }
+  setTouches(p.sort((a, b) => a.i - b.i), r);
+}
+['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(n => surf.addEventListener(n, onTouch, { passive: false }));
+['gesturestart', 'gesturechange'].forEach(n => document.addEventListener(n, e => e.preventDefault()));
+surf.addEventListener('contextmenu', e => e.preventDefault());
+
+// Ratón o lápiz (para probar desde un computador)
+const ptrs = new Map();
+function fromPtrs() {
+  const r = surf.getBoundingClientRect(), p = []; let i = 0;
+  for (const e of ptrs.values()) { if (++i > 5) break; p.push({ i, x: clamp((e.clientX - r.left) / r.width), y: clamp((e.clientY - r.top) / r.height), f: e.pressure || 0, d: Math.max(e.width || 0, e.height || 0) }); }
+  setTouches(p, r);
+}
+surf.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') return; surf.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, e); fromPtrs(); });
+surf.addEventListener('pointermove', e => { if (ptrs.has(e.pointerId)) { ptrs.set(e.pointerId, e); fromPtrs(); } });
+const pend = e => { if (ptrs.delete(e.pointerId)) fromPtrs(); };
+surf.addEventListener('pointerup', pend); surf.addEventListener('pointercancel', pend);
+
+// Dibujo y panel de datos
+function draw() {
+  const r = surf.getBoundingClientRect(); g.clearRect(0, 0, r.width, r.height);
+  for (const z of cur.p) {
+    const x = z.x * r.width, y = z.y * r.height, rad = Math.max(22, z.d / 2);
+    g.fillStyle = `rgba(255,255,255,${0.22 + z.f * 0.4})`; g.beginPath(); g.arc(x, y, rad, 0, 7); g.fill();
+    g.strokeStyle = '#ffffff'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, rad, 0, 7); g.stroke();
+    g.beginPath(); g.moveTo(x - rad - 10, y); g.lineTo(x + rad + 10, y); g.moveTo(x, y - rad - 10); g.lineTo(x, y + rad + 10); g.stroke();
+    g.fillStyle = '#fff'; g.font = '13px system-ui'; g.textAlign = 'center'; g.fillText(z.i, x, y - rad - 14);
+  }
+  const c = caps(), lines = [`dedos ${cur.n}`];
+  for (const z of cur.p) lines.push(`${z.i}  x ${r2(z.x).toFixed(2)}  y ${r2(z.y).toFixed(2)}  presión ${r2(z.f).toFixed(2)}  ⌀ ${Math.round(z.d)} px`);
+  lines.push(`presión: ${c.presion} · diámetro: ${c.diametro}`);
+  $('#hud').textContent = lines.join('\n');
+  requestAnimationFrame(draw);
+}
+setInterval(() => { const k = JSON.stringify(caps()); if (k !== lastCaps) { lastCaps = k; publishStatus(); } }, 700);
+
+// ---------- giro (orientación, velocidad de giro y aceleración) ----------
+let motionOn = false, bound = false, ang = null, rot = null, acc = null, mdirty = false;
+async function askMotion() { // iOS exige permiso explícito desde un gesto; Android no
+  for (const R of [window.DeviceMotionEvent, window.DeviceOrientationEvent])
+    if (R && typeof R.requestPermission === 'function') {
+      const r = await R.requestPermission();
+      if (r !== 'granted') throw new Error('Permiso de movimiento denegado. En iPhone: cierra Safari por completo y vuelve a entrar.');
+    }
+}
+function bindMotion() {
+  if (bound) return; bound = true;
+  addEventListener('deviceorientation', e => { ang = [e.alpha || 0, e.beta || 0, e.gamma || 0]; mdirty = true; });
+  addEventListener('devicemotion', e => {
+    const r = e.rotationRate, a = e.accelerationIncludingGravity;
+    if (r) rot = [r.beta || 0, r.gamma || 0, r.alpha || 0]; // ejes X, Y, Z en °/s
+    if (a) acc = [a.x || 0, a.y || 0, a.z || 0]; mdirty = true;
+  });
+  setInterval(() => {
+    if (!motionOn || !mdirty) return; mdirty = false;
+    pub('motion', { t: Date.now(), a: ang && ang.map(r1), r: rot && rot.map(r1), c: acc && acc.map(r2) });
+    if (ang) $('#v-motion').textContent = `${Math.round(ang[1])}° ${Math.round(ang[2])}°`;
+  }, 33);
+}
+
+// ---------- micrófono ----------
+let micCtx, micStream, micTimer;
+async function startMic() {
+  micStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+  micCtx = new (window.AudioContext || window.webkitAudioContext)(); await micCtx.resume();
+  const an = micCtx.createAnalyser(); an.fftSize = 1024; micCtx.createMediaStreamSource(micStream).connect(an);
+  const t = new Float32Array(an.fftSize), f = new Uint8Array(an.frequencyBinCount), hz = micCtx.sampleRate / an.fftSize;
+  const band = (a, b) => { let s = 0, n = 0; for (let i = Math.max(1, Math.floor(a / hz)); i < Math.min(f.length, Math.ceil(b / hz)); i++) { s += f[i]; n++; } return n ? s / n / 255 : 0; };
+  micTimer = setInterval(() => {
+    an.getFloatTimeDomainData(t); let s = 0; for (const v of t) s += v * v; an.getByteFrequencyData(f);
+    const l = Math.min(1, Math.sqrt(s / t.length) * 4);
+    pub('mic', { t: Date.now(), l: r3(l), b: [r3(band(40, 250)), r3(band(250, 2000)), r3(band(2000, 8000))] });
+    $('#v-mic').textContent = '█'.repeat(Math.round(l * 6)) || '·';
+  }, 50);
+}
+function stopMic() { clearInterval(micTimer); micStream?.getTracks().forEach(t => t.stop()); micCtx?.close(); micStream = micCtx = null; }
+
+// ---------- cámara: movimiento y brillo calculados en el teléfono (no sale video) ----------
+let camStream, camTimer, prev = null;
+const W = 64, H = 36, work = document.createElement('canvas'); work.width = W; work.height = H;
+const wctx = work.getContext('2d', { willReadFrequently: true });
+async function startCam() {
+  camStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: 640, height: 360 }, audio: false });
+  const vid = document.createElement('video'); vid.playsInline = true; vid.muted = true; vid.srcObject = camStream; await vid.play();
+  prev = null; let sm = 0;
+  camTimer = setInterval(() => {
+    wctx.drawImage(vid, 0, 0, W, H); const px = wctx.getImageData(0, 0, W, H).data, gray = new Uint8Array(W * H);
+    let bsum = 0; for (let i = 0; i < gray.length; i++) { gray[i] = (px[i * 4] * 0.3 + px[i * 4 + 1] * 0.59 + px[i * 4 + 2] * 0.11) | 0; bsum += gray[i]; }
+    if (prev) {
+      let n = 0, sx = 0, sy = 0;
+      for (let i = 0; i < gray.length; i++) if (Math.abs(gray[i] - prev[i]) > 25) { n++; sx += i % W; sy += (i / W) | 0; }
+      sm = sm * 0.4 + (n / gray.length) * 0.6;
+      pub('cam', { t: Date.now(), m: r3(sm), x: n ? r3(sx / n / W) : 0.5, y: n ? r3(sy / n / H) : 0.5, b: r3(bsum / gray.length / 255) });
+      $('#v-cam').textContent = Math.round(sm * 100) + '%';
+    }
+    prev = gray;
+  }, 80);
+}
+function stopCam() { clearInterval(camTimer); camStream?.getTracks().forEach(t => t.stop()); camStream = null; }
+
+// ---------- botones ----------
+const setOn = (id, on) => { $(id).classList.toggle('active', on); $(id).setAttribute('aria-pressed', on); };
+const fail = e => { $('#err2').textContent = e.message || (e.type ? 'No se pudo cargar el cliente MQTT (revisa la conexión a internet).' : String(e)); };
+$('#m-motion').onclick = async () => {
+  try { $('#err2').textContent = ''; if (!motionOn) { await askMotion(); bindMotion(); } motionOn = !motionOn; setOn('#m-motion', motionOn); if (!motionOn) $('#v-motion').textContent = '–'; publishStatus(); } catch (e) { fail(e); }
+};
+$('#cambiar').onclick = () => { // pide a la experiencia intercambiar brazo y garra con el otro jugador
+  pub('intercambiar', { t: Date.now() }, 1);
+  const b = $('#cambiar'); b.disabled = true; setTimeout(() => { b.disabled = false; }, 2000);
+};
+$('#avanzar').onclick = () => { // pide a la experiencia que la sonda avance; espera a que termine el desplazamiento
+  pub('avanzar', { t: Date.now() }, 1);
+  const b = $('#avanzar'); b.disabled = true; setTimeout(() => { b.disabled = false; }, 4000);
+};
+// explica por qué no hay micrófono y cómo arreglarlo
+function micFail(e) {
+  const n = e && e.name, msg =
+    !window.isSecureContext ? 'El micrófono solo funciona con https. Abre el enlace del QR tal cual (https://…).' :
+    !navigator.mediaDevices ? 'Este navegador no da acceso al micrófono. Abre el enlace en Chrome, no dentro del lector de QR.' :
+    n === 'NotAllowedError' || n === 'SecurityError' ? 'Permiso de micrófono bloqueado. Toca el ícono junto a la dirección → Permisos → Micrófono → Permitir, y recarga. Si sigue igual: Ajustes de Android → Apps → Chrome → Permisos → Micrófono.' :
+    n === 'NotFoundError' ? 'No se encontró un micrófono en este teléfono.' :
+    n === 'NotReadableError' ? 'Otra app está usando el micrófono (llamada, grabadora, asistente). Ciérrala y vuelve a intentar.' :
+    (e && e.message) || String(e);
+  $('#err2').textContent = msg;
+}
+$('#m-mic').onclick = async () => {
+  try { $('#err2').textContent = ''; if (micStream) { stopMic(); setOn('#m-mic', false); $('#v-mic').textContent = '–'; } else { await startMic(); setOn('#m-mic', true); } publishStatus(); } catch (e) { micFail(e); }
+};
+
+// ---------- entrar ----------
+async function wake() { try { await navigator.wakeLock?.request('screen'); } catch {} }
+$('#go').onclick = async () => {
+  name = $('#name').value.trim() || 'tel'; sala = Tacto.clean($('#sala').value);
+  if (sala.length < 4) { $('#err').textContent = 'Escribe la sala que muestra la experiencia (mínimo 4 caracteres).'; return; }
+  if (!window.isSecureContext) { $('#err').textContent = 'Los sensores de movimiento necesitan HTTPS. El tacto funcionará igual.'; }
+  ls('tacto.name', name); ls('tacto.sala', sala);
+  try { await askMotion(); bindMotion(); motionOn = true; setOn('#m-motion', true); }
+  catch (e) { $('#err').textContent = e.message + ' Puedes continuar solo con el tacto.'; }
+  $('#join').style.display = 'none'; $('#run').style.display = 'flex'; fit(); draw(); wake();
+  document.addEventListener('visibilitychange', () => document.visibilityState === 'visible' && wake());
+  connect().catch(e => { $('#st').textContent = 'No se pudo conectar'; fail(e); });
+};
+</script>
+</body>
+</html>
