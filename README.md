@@ -1,532 +1,237 @@
-# Tacto · el teléfono como control remoto de una experiencia web
+# MARTE · telemanipulación cooperativa
 
-Tacto convierte el teléfono (iPhone o Android, solo con el navegador, sin instalar nada) en un **control remoto táctil** para una experiencia web con audio e imagen. El teléfono mide qué hace tu mano: dónde toca, con cuántos dedos, con qué presión y diámetro, y cómo gira el aparato. Esos datos viajan por **MQTT** hasta una página en el computador, donde un **panel de conexiones** los enlaza con variables de sonido e imagen.
+**Un brazo, dos manos, una sola señal.** MARTE convierte dos teléfonos en los controles de un brazo de muestreo de una sonda en el cráter Jezero de Marte. Uno de los jugadores mueve el brazo y el otro maneja la garra. La máquina solo obedece cuando los dos se ponen de acuerdo.
 
-Está pensado como herramienta de curso: cada estudiante levanta su propio sistema en su computador, sin hosting especial, y puede después copiar la librería `tacto.js` a sus propias plataformas.
-
-## Contenido
-
-1. [Cómo funciona](#1-cómo-funciona)
-2. [Puesta en marcha](#2-puesta-en-marcha)
-3. [Archivos del proyecto](#3-archivos-del-proyecto)
-4. [La página del teléfono](#4-la-página-del-teléfono)
-5. [Mensajes MQTT](#5-mensajes-mqtt)
-6. [Canales: lo que ve la experiencia](#6-canales-lo-que-ve-la-experiencia)
-7. [La experiencia y el panel de conexiones](#7-la-experiencia-y-el-panel-de-conexiones)
-8. [Variables de salida](#8-variables-de-salida)
-9. [Dos formas de montarlo](#9-dos-formas-de-montarlo)
-10. [Usar Tacto en tus propias experiencias](#10-usar-tacto-en-tus-propias-experiencias)
-11. [Otras herramientas MQTT](#11-otras-herramientas-mqtt)
-12. [Variables de entorno del servidor](#12-variables-de-entorno-del-servidor)
-13. [Limitaciones conocidas](#13-limitaciones-conocidas)
-14. [Solución de problemas](#14-solución-de-problemas)
+- **Plataforma publicada:** `https://<tu-usuario>.github.io/<tu-repositorio>/` *(completar)*
+- **Video (30–60 s):** *(completar con el enlace)*
+- Encargo DPPI 2026 · Diseño UDP. Construido a partir de [Tacto](https://github.com/fefeliperoar/tacto).
 
 ---
 
-## 1. Cómo funciona
+## 1. Concepto
+
+Operar una máquina a millones de kilómetros es tocar algo que no se puede tocar. El teléfono deja de ser una pantalla de vidrio y pasa a ser la única conexión con un brazo pesado que responde tarde, a tirones y entre interferencias.
+
+MARTE propone que **el tacto se vuelva un acuerdo entre dos personas**:
+
+- El cuerpo de cada jugador, inclinando el teléfono, apunta una **mira**. Si las dos miras no coinciden, los servos del robot se pelean. La imagen se rompe en bandas de color y suena la fricción metálica de las ruedas de la sonda.
+- Cuando las miras se superponen se produce el **acople**: la imagen se limpia, suena un cierre metálico y la garra empieza a responder.
+- Las rocas pequeñas se pueden tomar entre uno, pero **las grandes solo se mueven si los dos están acoplados**.
+
+La cámara del brazo envía pocos cuadros por segundo, como una transmisión lejana, mientras que **el sonido llega al instante**. Por eso el oído confirma el contacto antes que la vista. Se escucha la grava bajo la garra, el pistón del brazo, el servo de la pinza y el golpe de la roca en el canasto.
+
+**Qué queremos que la persona sienta:** el peso y la distancia de la materia, y que mover algo pesado a ciegas es un trabajo de escucha y de coordinación con el otro, no de habilidad individual.
+
+---
+
+## 2. Cómo se juega
+
+1. El computador muestra la cámara del brazo a pantalla completa, con un QR en la esquina superior derecha.
+2. Uno o dos jugadores escanean el QR. Hay un **máximo de dos**; un tercer teléfono ve "sala llena".
+   - **Con un jugador:** ese teléfono controla todo el robot.
+   - **Con dos jugadores:** el primero (A) controla el **brazo** y su pantalla se vuelve naranja. El segundo (B) controla la **garra** y su pantalla se vuelve azul marino.
+3. Llevar la garra sobre una roca, cerrarla, bloquearla con un tercer dedo y transportarla hasta el **canasto** que cuelga del costado derecho de la sonda.
+4. Al caer en el canasto aparece una **ficha con la composición** de la roca, que se desvanece a los 10 segundos.
+5. Cuando el sector queda vacío, cualquiera de los dos aprieta **AVANZAR**. La imagen se oscurece, suenan las orugas y los dos teléfonos vibran. Al terminar aparece un sector nuevo con otras rocas.
+
+---
+
+## 3. Funcionamiento
+
+### 3.1 Tabla de conexiones
+
+| Gesto en el teléfono | Quién (con 2 jugadores) | Qué hace en el robot | Imagen | Sonido |
+|---|---|---|---|---|
+| Inclinar adelante / atrás | A · brazo | Extiende o recoge el brazo | El brazo (franja naranja) se desplaza; la mira A lo sigue | Pistón hidráulico (`brazo-hidraulico`), más fuerte cuanto más rápido; purga de presión al detenerse (`aire`) |
+| Inclinar a los lados | A · brazo | Gira el brazo hasta ±80° | — | Pistón hidráulico |
+| Inclinar el teléfono | B · garra | Mueve la **mira de la garra** | Mira B; línea punteada hasta la mira A; porcentaje de **ACOPLE** | — |
+| Miras desalineadas | A + B | Los servos se pelean: el brazo avanza a tirones y la garra **no responde** | Bandas, separación de color, "SIN SEÑAL", cuadros más lentos | Fricción de las ruedas (`rover-ruedas`), estática (`estatica`), alarma (`alarma`), la señal se apaga (filtro) |
+| Miras superpuestas | A + B | **Acople**: la garra obedece | Mira blanca "ACOPLE"; imagen limpia | Cierre metálico (`clack`) + tono (`ping`) |
+| Dos dedos: juntar / separar | B · garra | Cierra (las puntas se cruzan) o abre (hasta 180°); queda en la última apertura | Garra con franja azul marino | Servo eléctrico (`servo`); golpe metálico si se cierra del todo sin roca (`metal`) |
+| Garra rozando una roca | — | Contacto | — | Grava (`grava`) + **pulso corto doble** en el teléfono de la garra |
+| Toque con un **tercer dedo** | B · garra | Bloquea / libera la garra en modo apriete y toma la roca | Letrero **ASEGURADO** rojo → verde | Cierre metálico (`clack`) + **pulso largo** al bloquear, toque breve al liberar |
+| Transportar la roca | A mueve, B mantiene | La roca va en la garra | Roca entre las puntas | Arrastre de piedra (`arrastre`) |
+| Separar los dedos sobre el canasto | B · garra | Suelta la roca, que cae y desaparece | Canasto se mece; ficha de composición abajo | Golpe en el canasto (`canasto`), sellado (`aire`), confirmación (`ping`) + **vibración en ambos teléfonos** |
+| Separar los dedos fuera del canasto | B · garra | La roca vuelve a su lugar | Aviso "VUELVE A SU LUGAR" | Golpe contra el suelo (`roca-suelo` / `roca-suelo-grande`) |
+| Soplar al micrófono / arrastrar un dedo rápido | cualquiera | Limpia el polvo del lente | Manchas en el lente desaparecen | — |
+| Botón **AVANZAR** | cualquiera | La sonda rueda a otro punto del cráter | Imagen oscura que se mece, letrero "AVANZANDO…", sector nuevo | Orugas sobre la grava (`rover-ruedas`) + **vibración en ambos teléfonos** |
+| Botón **⇄ cambiar brazo / garra** | cualquiera (solo con 2 jugadores) | Los jugadores se pasan el brazo y la garra; no funciona mientras llevan una roca | Aviso "ROLES INTERCAMBIADOS"; cada teléfono cambia de color | Cierre metálico (`clack`) + vibración en ambos teléfonos |
+| (siempre) | — | Ambiente | — | Viento de Marte (`viento-marte`) |
+
+**Reglas de las rocas:**
+
+- **Pequeñas:** un solo jugador puede tomarlas, o la garra si hay acople.
+- **Grandes:** oscuras, angulosas y unas tres veces más grandes. Necesitan dos jugadores acoplados. Si un jugador solo lo intenta, aparece "FUERZA INSUFICIENTE · ROCA GRANDE: FALTA UN OPERADOR".
+
+### 3.2 Conexión por MQTT
 
 ```
- Teléfono (iOS / Android, solo navegador)            Computador
- ┌───────────────────────────────┐    MQTT     ┌────────────────────────────────────────────┐
- │ tacto: X, Y, dedos, presión,  │  sobre      │ Broker MQTT  ──►  Experiencia web (/exp)   │
- │ diámetro · giro 3 ejes ·      │ ─────────►  │ (embebido)         audio + imagen +        │
- │ micrófono · cámara (opcional) │  WebSocket  │      │             panel de conexiones     │
- └───────────────────────────────┘             │      └──► otras herramientas (TCP 1883)    │
-                                               └────────────────────────────────────────────┘
+ teléfono A ─┐                         ┌─ pantalla (computador)
+ teléfono B ─┴─►  broker MQTT (EMQX)  ─┴─►  index.html + sonda.js
+             ◄──────────────────────────────  órdenes de vuelta (rol, color, vibración)
 ```
 
-Tres piezas:
+- **Broker:** en GitHub Pages se usa el broker EMQX definido en `public/config.js`, con usuario y contraseña. En modo local, `node server.js` trae su propio broker.
+- **Entrar:** el teléfono entra escaneando el QR. Ese enlace lleva a `control.html` con la **sala** y el broker ya puestos.
+- **Temas:** todo viaja en `tacto/<sala>/<teléfono>/<tipo>`.
 
-| Pieza | Qué es | Dónde vive |
+| Tipo | Dirección | Contenido |
 |---|---|---|
-| **Página del teléfono** | Lee el tacto y los sensores y los publica por MQTT. | `public/index.html` |
-| **Broker MQTT** | El "cartero": recibe lo que publica el teléfono y se lo entrega a quien esté suscrito. | Dentro de `server.js` (Aedes) |
-| **Experiencia** | Se suscribe a los datos, los convierte en canales y los lleva a audio e imagen según el panel. | `public/exp.html` + `exp.js` |
+| `status` | teléfono → pantalla | En línea, nombre y capacidades. Es retenido; si el teléfono se desconecta, el broker avisa `online:false` por "último testamento" |
+| `touch` | teléfono → pantalla | Dedos: posición, presión, diámetro y cantidad (hasta ~60 por segundo). Los cambios de cantidad van con entrega garantizada (QoS 1) |
+| `motion` | teléfono → pantalla | Inclinación del teléfono (alfa, beta, gama) |
+| `mic` | teléfono → pantalla | Nivel del micrófono y tres bandas (graves, medios, agudos), para el soplido |
+| `avanzar` | teléfono → pantalla | Botón AVANZAR (QoS 1) |
+| `intercambiar` | teléfono → pantalla | Botón ⇄: intercambiar brazo y garra (QoS 1) |
+| `cmd` | pantalla → teléfono | `rol` (A/B), `parte` (brazo/garra) y su color · `vibrar` (patrón según el evento: contacto `18-45-18` ms, bloqueo `70-35-140`, liberar `35`, canasto `40-70-40-70-220`, intercambio y avance) · `lleno` (sala llena) |
 
-Por qué MQTT: es un protocolo ligero de publicar/suscribir, pensado para flujos de datos pequeños y frecuentes. El teléfono no necesita saber quién escucha, y varias herramientas pueden escuchar a la vez (la experiencia, un Arduino, Node-RED, un script de Python). Además queda como herramienta nueva en el repertorio de los estudiantes.
+La postura del teléfono al conectarse se toma como el "cero" de la inclinación. La tecla **C** recalibra.
 
-**Salas.** Cada conexión usa un código de sala (por ejemplo `k7m2xq`). Todos los temas MQTT cuelgan de `tacto/<sala>/…`, así que varios estudiantes pueden compartir un broker sin mezclarse. La experiencia genera la sala y la muestra con un QR.
+### 3.3 Sonidos
 
-**Recorrido de un toque**, de punta a punta:
+MARTE usa **15 sonidos**: 14 archivos de uso libre y 1 sintetizado. Los archivos van en `public/assets/sonidos/` con el nombre exacto de la primera columna, en formato `.mp3`, `.wav` u `.ogg`.
 
-1. El dedo toca la superficie del teléfono. El navegador entrega un `TouchEvent` con posición, `force` (presión) y `radiusX/radiusY` (tamaño del contacto).
-2. `index.html` lo normaliza (X e Y entre 0 y 1) y lo publica en `tacto/<sala>/<dispositivo>/touch`, como mucho una vez por cuadro de pantalla (~60 por segundo).
-3. El broker lo reenvía a la experiencia.
-4. `tacto.js` lo descompone en **canales** planos (`touch.x`, `touch.f`, `t2.y`…).
-5. Cada **conexión** del panel toma un canal, lo reescala (rango, curva, inversión, suavizado) y lo escribe en una **variable de salida** (filtro, volumen, zoom, tono de color…).
-6. La variable cambia el audio (Web Audio) o la imagen (filtros y transformaciones CSS) en ese mismo cuadro.
+Si falta un archivo, la plataforma usa una **versión sintetizada con código** que imita ese sonido. El panel de prueba (tecla **D**) muestra cuáles se están usando.
 
----
+| Archivo | Sonido original | Autor | Licencia | Enlace | Uso en MARTE |
+|---|---|---|---|---|---|
+| `viento-marte` | Viento en Marte grabado por el micrófono SuperCam de Perseverance | NASA/JPL-Caltech/LANL/CNES | Dominio público (NASA) | [nasa.gov · Sounds from beyond](https://www.nasa.gov/sounds-from-beyond/) | Ambiente constante |
+| `rover-ruedas` | Perseverance conduciendo en el cráter Jezero, sol 16 (90 s) | NASA/JPL-Caltech | Dominio público (NASA) | [SoundCloud NASA](https://soundcloud.com/nasa/sounds-of-perseverance-mars-rover-driving-sol-16-90-second-highlights) | Fricción con interferencia · orugas al AVANZAR |
+| `brazo-hidraulico` | Weight machine, gas resistance | OroborosNZ | CC0 | [freesound.org/s/273649](https://freesound.org/people/OroborosNZ/sounds/273649/) | Movimiento del brazo |
+| `servo` | Servo motor | Burningmonkey | CC0 | [freesound.org/s/322021](https://freesound.org/people/Burningmonkey/sounds/322021/) | Abrir y cerrar la garra |
+| `estatica` | Static | joedeshon | CC0 | [freesound.org/s/259252](https://freesound.org/people/joedeshon/sounds/259252/) | Interferencia y polvo en el lente |
+| `grava` | Tires on Gravel Road 2 | OBXJohn | CC0 | [freesound.org/s/251662](https://freesound.org/people/OBXJohn/sounds/251662/) | Garra en contacto con la roca · orugas |
+| `arrastre` | stone_sliding | Rooms_Boxes | CC0 | [freesound.org/s/424169](https://freesound.org/people/Rooms_Boxes/sounds/424169/) | Roca transportada |
+| `clack` | Opening and closing a small metal hatch | Irolan | CC0 | [freesound.org/s/488221](https://freesound.org/people/Irolan/sounds/488221/) | Acople, bloqueo y agarre |
+| `metal` | Foley_Impact_Metal_Long_Mono | Nox_Sound | CC0 | [freesound.org/s/569555](https://freesound.org/people/Nox_Sound/sounds/569555/) | Garra cerrada del todo sin roca |
+| `alarma` | Beep warning | SamsterBirdies | CC0 | [freesound.org/s/467882](https://freesound.org/people/SamsterBirdies/sounds/467882/) | Interferencia sobre 55 % |
+| `aire` | Steam/hiss | wubitog | CC0 | [freesound.org/s/234782](https://freesound.org/people/wubitog/sounds/234782/) | Purga del pistón · sellado del canasto |
+| `canasto` | Golpe sordo al apoyar un objeto | (ver página) | CC0 | [freesound.org/s/323725](https://freesound.org/s/323725) | La roca cae dentro del canasto |
+| `roca-suelo` | stone falls and breaks low pitch | SoundCollectah | CC0 | [freesound.org/s/109360](https://freesound.org/people/SoundCollectah/sounds/109360/) | Roca pequeña soltada fuera del canasto |
+| `roca-suelo-grande` | HEAVY BAG DROP DIRT | burbujafilms | CC0 | [freesound.org/s/392008](https://freesound.org/people/burbujafilms/sounds/392008/) | Roca grande soltada fuera del canasto |
+| *(sin archivo)* `ping` | Tono de confirmación | Propio, sintetizado en `sonda.js` | — | — | Operador en línea, acople, muestra asegurada |
 
-## 2. Puesta en marcha
+Notas:
 
-Requisitos: [Node.js](https://nodejs.org) 18 o superior, y que computador y teléfono estén en la **misma red** (el hotspot del teléfono, conexión USB compartida o el WiFi de la casa). La red de la universidad suele bloquear la conexión entre dispositivos; usa el hotspot.
+- **Golpes recortados:** en los sonidos cortos (`clack`, `metal`, `alarma`, `aire`, `canasto`, `roca-suelo`, `roca-suelo-grande`) el programa busca el instante más fuerte del archivo y recorta alrededor, así que no hace falta editarlos.
+- **El sonido del brazo:** el brazo real de Perseverance no es hidráulico; lo mueven motores eléctricos con engranajes. En MARTE el brazo suena a pistón hidráulico por decisión de diseño, para que el gesto se sienta pesado. La garra conserva un servo eléctrico, más cercano a la sonda real.
+- **Material de la NASA:** no tiene derechos de autor; se acredita como "NASA/JPL-Caltech" y no se sugiere que la NASA respalde el proyecto. Freesound pide una cuenta gratuita para descargar.
 
-```bash
-npm install        # solo la primera vez
-node server.js
-```
+### 3.4 Imagen
 
-> En PowerShell, `npm start` puede fallar por la política de ejecución de scripts. Usa `node server.js` (o `npm.cmd start`); no hace falta cambiar ninguna política.
+- **Rocas:** `public/assets/img/rocas/grande-1..3.png` y `pequena-1..4.png`. Son PNG propios con fondo transparente, generados con código (`herramientas/generar-rocas.py`, relieve con ruido fractal e iluminación). Se pueden reemplazar por recortes de fotos de la NASA con los mismos nombres.
+- **Suelo:** opcional, en `public/assets/img/suelo.jpg`. Por ejemplo, [la primera imagen a color de la cámara Hazcam de Perseverance](https://mars.nasa.gov/resources/25612/perseverances-first-full-color-look-at-mars/) (NASA/JPL-Caltech, dominio público). Si no está, el suelo se genera con código.
+- **Tratamiento:** toda la imagen pasa por una paleta marciana: sombras óxido, suelo rojizo y cielo ocre. Las franjas naranja (brazo) y azul marino (garra) se pintan encima, en color.
 
-El servidor imprime algo así:
+### 3.5 Composición de las rocas
 
-```
-  Tacto
-  Experiencia (computador):  https://localhost:8443/exp
-  Teléfonos entran a:        https://172.20.10.2:8443
-  Broker MQTT:  wss://localhost:8443/mqtt   ·   tcp :1883
-```
+La ficha muestra una **composición estimada**: los porcentajes son ilustrativos y varían ±5 % entre rocas, no son mediciones. Lo que sí se basa en la ciencia publicada es **qué tipos de roca existen en Jezero y qué minerales contienen**:
 
-**En el computador**
-
-1. Abre `https://localhost:8443/exp`. El navegador avisa que el certificado no es de confianza: es normal, lo generó tu propio computador. Acepta continuar.
-2. Pulsa **Activar audio** (los navegadores exigen un gesto del usuario para sonar).
-
-**En el teléfono**
-
-1. Escanea el QR de la experiencia (o escribe la dirección que aparece bajo "Conectar el teléfono").
-2. Acepta el aviso del certificado: iPhone, *Mostrar detalles → visitar este sitio web*; Android, *Avanzado → Continuar*.
-3. Escribe tu nombre y pulsa **Conectar**. Acepta el permiso de movimiento cuando lo pida.
-4. Arriba debe decir **● conectado**. En el computador, el teléfono aparece en el selector "Teléfono".
-5. Toca la pantalla: el panel de la derecha ya trae conexiones de ejemplo (el tono, el filtro y el zoom responden).
-
-**Sin teléfono:** arrastra el ratón sobre la imagen de la experiencia. Actúa como un teléfono virtual llamado "ratón" (casilla "Ratón como teléfono").
-
-Para una prueba guiada con teléfonos reales, mira [PRUEBA_1.md](PRUEBA_1.md).
-
-**Por qué HTTPS.** Los sensores de movimiento y el micrófono solo funcionan en "contexto seguro". El servidor crea un certificado autofirmado (carpeta `.cert/`) y lo regenera solo si cambian las direcciones IP del computador. El tacto funciona igual sin HTTPS, pero el giro no.
-
----
-
-## 3. Archivos del proyecto
-
-```
-05_TACTO/
-├─ server.js            Servidor: sirve las páginas, el broker MQTT, el QR y /info
-├─ package.json         Dependencias: express, aedes, mqtt, ws, qrcode, selfsigned
-├─ README.md            Este documento
-├─ .github/workflows/pages.yml   Publica public/ en GitHub Pages
-├─ .gitignore           Excluye node_modules, .cert y el prototipo _v1
-├─ PRUEBA_1.md          Guía de prueba con teléfonos reales y tabla de resultados
-├─ .cert/               Certificado autofirmado (se crea solo)
-├─ _v1/                 Prototipo anterior (WebSocket + instrumento sonoro), archivado
-└─ public/
-   ├─ index.html        Página del teléfono
-   ├─ exp.html          Estructura de la experiencia
-   ├─ exp.js            Lógica de la experiencia: salidas de audio/imagen, panel de conexiones
-   ├─ fisica.js         Física de materiales (tela, agua, squishy, remolino) y dibujo WebGL
-   ├─ tacto.js          Librería compartida: conexión MQTT, salas, catálogo de canales
-   ├─ ui.css            Estilos compartidos (variables de color, controles, foco)
-   ├─ config.js         Configuración opcional (broker propio, dirección de la página del teléfono)
-   ├─ vendor/mqtt.min.js   Cliente MQTT local (sin depender de CDN)
-   ├─ .nojekyll         Evita que Pages procese los archivos con Jekyll
-   ├─ manifest.webmanifest, icon.svg   Para "Añadir a pantalla de inicio"
-```
-
-**`server.js`** hace cuatro cosas:
-
-- Sirve `public/` con Express (`/exp` entrega `exp.html`).
-- Sirve `mqtt.min.js` desde `node_modules` en `/vendor`, para que funcione sin internet.
-- Corre un broker Aedes: MQTT sobre WebSocket en `/mqtt` (navegadores) y MQTT sobre TCP en el puerto 1883 (herramientas externas).
-- Responde `/info` (dirección base, estado del broker) y `/qr.svg?u=…` (genera el QR).
-
-En el terminal registra `+ mqtt <id>` y `- mqtt <id>` cada vez que un cliente entra o sale: sirve para comprobar que el teléfono llegó.
-
----
-
-## 4. La página del teléfono
-
-`public/index.html` tiene dos estados: formulario de entrada (nombre y sala) y vista de control.
-
-### Tacto
-
-Se leen con **Touch Events** (`targetTouches`), que son los que traen presión y radio de contacto. Para probar desde un computador cae a **Pointer Events** (ratón o lápiz).
-
-| Dato | Origen en el navegador | Resultado |
+| Tipo en MARTE | Minerales en la ficha | Respaldo |
 |---|---|---|
-| Posición X, Y | `clientX/Y` relativo a la superficie | 0–1 |
-| Cantidad de dedos | `targetTouches.length` | 0–5 |
-| Presión | `Touch.force` | 0–1 |
-| Diámetro del contacto | `radiusX + radiusY` (el diámetro medio de la elipse) | píxeles |
+| Basalto | piroxeno, plagioclasa, óxidos de Fe-Ti, olivino | Formación Máaz, interpretada como coladas de lava (Farley et al., 2022) |
+| Olivinita (Séítah) | olivino, piroxeno, carbonatos, cromita | Roca de olivino de grano grueso acumulada en la base de un cuerpo de magma, con carbonatos de Mg-Fe (Farley et al., 2022; Liu et al., 2022) |
+| Roca con carbonatos | carbonato de Mg, sílice, arcillas, sulfatos | El agua transformó olivino en carbonato y sílice en la Margin Unit (NASA, 2026) |
+| Arenisca con sulfatos | sulfato de Mg, sílice, óxidos de Fe, percloratos | Sulfatos y percloratos en cavidades, por evaporación de salmueras (Farley et al., 2022; Scheller et al., 2022) |
+| Lutita con hematita | arcillas, hematita, fosfato de Fe, sílice | Formación Bright Angel (Cheyava Falls): arcillas esmectitas, hematita y sulfatos de calcio (SETI Institute, 2025), con fosfatos y sulfuros de hierro (Hurowitz et al., 2025) |
+| Brecha de impacto | basalto, hematita, vidrio de impacto, sulfato de Ca | Tipo genérico de cráteres de impacto; **sin** respaldo de una medición específica en Jezero |
 
-Cada dedo apoyado recibe una **casilla estable de 1 a 5** que conserva mientras siga tocando. Así `t1` es siempre el primer dedo que apoyaste, aunque levantes otro.
-
-**Envío:** el movimiento se publica una vez por cuadro (≈60/s, calidad de servicio 0). Cuando **cambia la cantidad de dedos** se publica de inmediato con entrega garantizada (QoS 1), para no perder nunca un "apoyó" o un "soltó".
-
-**Presión y diámetro dependen del teléfono.** El navegador solo los entrega si el hardware los mide. Muchos teléfonos Android dan ambos; algunos iPhone no entregan presión útil. Por eso la página mide, en vivo, la calidad de cada dato y la muestra abajo de la superficie:
-
-- *variable*: cambia al apretar; sirve como control.
-- *constante*: el teléfono entrega un valor fijo; no sirve.
-- *sin dato*: siempre cero.
-
-Si la presión no sirve en tu teléfono, el diámetro del contacto (que crece al apretar más) es el sustituto más cercano. Esta información viaja también en el estado del dispositivo (`caps`).
-
-### Giro
-
-Con el botón **Giro** (se activa solo al conectar si das permiso):
-
-- `deviceorientation`: ángulos alfa, beta y gamma en grados.
-- `devicemotion`: velocidad de giro (°/s) y aceleración con gravedad (m/s²).
-
-iOS exige un permiso explícito, pedido desde un toque del usuario. Si lo negaste, cierra Safari por completo y vuelve a entrar. Se publica cada 33 ms (≈30/s).
-
-### Micrófono y cámara (opcionales)
-
-- **Micrófono:** se mide el nivel (RMS) y tres bandas de frecuencia (graves 40–250 Hz, medios 250–2000 Hz, agudos 2–8 kHz) cada 50 ms. El audio no sale del teléfono: solo viajan los números.
-- **Cámara:** se reduce la imagen a 64×36, se compara con el cuadro anterior y se calcula la fracción de píxeles que cambió, el centro de ese movimiento y el brillo medio, cada 80 ms. **El video no sale del teléfono.**
-
-### Otras cosas que hace
-
-- Mantiene la pantalla encendida (Wake Lock). Si bloqueas la pantalla, el navegador suspende los sensores y el envío se detiene.
-- Publica su estado como mensaje *retained* con **último testamento** (ver sección 5): si el teléfono se cae, la experiencia se entera y no deja nada "apretado".
-- Responde a los *ping* de la experiencia para medir la latencia.
-- Guarda nombre, sala e identificador de dispositivo en el navegador, para no repetirlos.
-- En iPhone, "Añadir a pantalla de inicio" evita los gestos de borde de Safari.
+- Farley, K. A., et al. (2022). Aqueously altered igneous rocks sampled on the floor of Jezero crater, Mars. *Science*, 377(6614). https://doi.org/10.1126/science.abo2196
+- Liu, Y., et al. (2022). An olivine cumulate outcrop on the floor of Jezero crater, Mars. *Science*, 377(6614), 1513–1519. https://doi.org/10.1126/science.abo2756
+- Scheller, E. L., et al. (2022). Aqueous alteration processes in Jezero crater, Mars—implications for organic geochemistry. *Science*, 378(6624), 1105–1110. https://doi.org/10.1126/science.abo5204
+- Hurowitz, J. A., et al. (2025). Redox-driven mineral and organic associations in Jezero Crater, Mars. *Nature*, 645(8080), 332–340. https://doi.org/10.1038/s41586-025-09413-0
+- SETI Institute (2025). Comentario de Bishop y Parente en *Nature News & Views* sobre la mineralogía de Jezero. https://www.eurekalert.org/news-releases/1097904
+- NASA (2026). *NASA Discovery Reveals Complex Water Systems on Early Mars*. https://www.nasa.gov/missions/mars-2020-perseverance/nasa-discovery-reveals-complex-water-systems-on-early-mars/
 
 ---
 
-## 5. Mensajes MQTT
+## 4. Reflexión
 
-Todos los mensajes son JSON, bajo `tacto/<sala>/<dispositivo>/…`. `<dispositivo>` es un identificador aleatorio de 6 caracteres que cada teléfono guarda.
+> **Borrador para reescribir con tus palabras y tu experiencia de las pruebas.** Está pensado como punto de partida, no como texto final.
 
-| Tema | Retenido | Contenido |
-|---|---|---|
-| `…/status` | sí | `{ online, name, caps }`. `caps` indica la calidad de presión y diámetro y qué módulos están activos. |
-| `…/touch` | no | `{ t, n, ar, p:[{ i, x, y, f, d }] }` |
-| `…/motion` | no | `{ t, a:[alfa,beta,gamma], r:[x,y,z], c:[x,y,z] }` |
-| `…/mic` | no | `{ t, l, b:[graves,medios,agudos] }` |
-| `…/cam` | no | `{ t, m, x, y, b }` |
-| `…/cmd` | no | Lo publica la experiencia: `{ ping }` |
-| `…/pong` | no | Respuesta del teléfono: `{ t }` |
+**Qué descubrimos al traducir el tacto en imagen y sonido.**
 
-Campos de `touch`: `t` marca de tiempo en ms; `n` cantidad de dedos; `ar` proporción ancho/alto de la superficie (se usa para medir distancias entre dedos sin deformarlas); `p` lista de dedos con `i` casilla 1–5, `x`/`y` posición 0–1, `f` presión 0–1 y `d` diámetro en px.
+- **El contacto se escucha.** Con la cámara a pocos cuadros por segundo, el sonido llega antes que la imagen, y los jugadores empiezan a escuchar la garra para saber si tocó la roca. El oído pasa a ser el sentido del tacto a distancia.
+- **El desacuerdo se vuelve materia.** El desacuerdo entre dos manos se convierte en ruido visual y sonoro. La interferencia no es un error técnico sino la forma en que el sistema muestra que dos cuerpos no están sincronizados.
+- **Dividir el robot obliga a hablar.** Cuando uno mueve el brazo y el otro la garra, los jugadores tienen que comunicarse fuera de la pantalla: "más a la izquierda", "ahora, cierra".
+- **La latencia de EMQX suma realismo.** Hace que la máquina se sienta lejana, lo que coincide con la idea de operar en Marte.
 
-Campos de `motion`: `a` orientación en grados; `r` velocidad de giro en °/s, en orden [X, Y, Z]; `c` aceleración en m/s².
+**Qué queda fuera del sistema.**
 
-**Último testamento (LWT).** Al conectarse, el teléfono le deja al broker un mensaje de despedida: "publica `status {online:false}` si me caigo". Si la conexión se corta sin aviso (batería, túnel, pantalla bloqueada), el broker lo publica por él. La experiencia, al ver `online:false`, pone en cero dedos, presión y diámetro, así que ningún sonido queda sonando por un teléfono que ya no está.
+- **No hay fuerza real.** El teléfono no puede empujar de vuelta la mano: la resistencia de una roca pesada solo se insinúa con sonido, vibración y bloqueo.
+- **La presión del dedo no sirve en todos los teléfonos.** Muchos Android no la miden, y por eso el agarre se resuelve con un tercer dedo.
+- **iPhone no vibra desde una página web.**
+- **La composición de las rocas es una estimación.** El brazo real es eléctrico y no hidráulico.
 
-**Latencia.** Cada 2 segundos la experiencia manda un `ping` con su reloj; el teléfono lo devuelve en `pong`. La diferencia es el tiempo de ida y vuelta pasando por el broker. La cabecera muestra la mediana de las últimas 40 mediciones. En red local típicamente son pocos milisegundos.
+**Mejoras concretas.**
 
----
+Ya incorporadas tras la primera versión: **vibración háptica por evento** (contacto, bloqueo, canasto) e **intercambio de roles** con un botón en el teléfono.
 
-## 6. Canales: lo que ve la experiencia
-
-`tacto.js` toma cada mensaje y lo aplana en **canales**, números con nombre fijo y un rango habitual. Son las "entradas" del panel.
-
-| Canal | Qué es | Rango |
-|---|---|---|
-| `touch.n` | dedos apoyados | 0–5 |
-| `touch.down` | hay al menos un dedo (0/1) | 0–1 |
-| `touch.x`, `touch.y` | promedio de la posición de todos los dedos | 0–1 |
-| `touch.f` | presión máxima entre los dedos | 0–1 |
-| `touch.d` | diámetro medio entre los dedos | 0–120 px |
-| `touch.dist` | distancia entre los dedos 1 y 2 (en la unidad del ancho; corregida por proporción) | 0–1.5 |
-| `touch.ang` | ángulo de la línea dedo 1 → dedo 2 | −180–180° |
-| `t1.x` … `t5.x`, `.y`, `.f`, `.d` | cada dedo por separado | 0–1, px |
-| `ang.a`, `ang.b`, `ang.g` | orientación alfa, beta, gamma | 0–360°, ±180°, ±90° |
-| `rot.x`, `rot.y`, `rot.z` | velocidad de giro | ±360 °/s |
-| `acc.x`, `acc.y`, `acc.z` | aceleración con gravedad | ±20 m/s² |
-| `mic.level`, `mic.low`, `mic.mid`, `mic.high` | nivel y bandas | 0–1 |
-| `cam.motion`, `cam.x`, `cam.y`, `cam.bright` | movimiento, su centro y brillo | 0–1 |
-
-Detalles útiles:
-
-- Un canal vale `null` hasta que llega su primer dato. El panel muestra "sin datos".
-- Al soltar un dedo, su presión y diámetro vuelven a 0, pero su X e Y **conservan la última posición**, para que un sonido no salte al soltar.
-- Con dos dedos o más, `touch.x/y` son el punto medio, útil como "centro de la mano".
-- Hay ejes y signos que dependen del teléfono; por eso `PRUEBA_1.md` pide anotar cómo se comportan `ang.*` y `rot.*` en iPhone y en Android.
+1. **Rocas reales:** recortes de fotografías de Perseverance (dominio público) en vez de rocas generadas, y composiciones basadas en muestras reales publicadas.
+2. **Calibración visible en el teléfono:** un botón para fijar el "cero" de la inclinación sin tocar el computador.
+3. **Vibración que crece con la interferencia:** pulsos cada vez más seguidos mientras las miras se separan, para que la descoordinación se sienta en la mano y no solo se vea.
+4. **Respuesta en iPhone:** como Safari no vibra, reforzar el destello de la superficie con un sonido corto en el propio teléfono.
 
 ---
 
-## 7. La experiencia y el panel de conexiones
+## 5. Ejecutar
 
-`exp.html` + `exp.js`, en `/exp`. Tres columnas:
+### En GitHub Pages (entrega)
 
-- **Entradas (izquierda):** monitor en vivo de todos los canales, agrupados, con barra de valor. Sirve para ver qué entrega tu teléfono.
-- **Escenario (centro):** la imagen, con los toques del teléfono dibujados encima; las fuentes de audio e imagen; el QR para conectar.
-- **Conexiones (derecha):** el panel de mapeo.
+1. Sube el repositorio. En **Settings → Pages → Source**, elige **GitHub Actions**. El flujo `.github/workflows/pages.yml` publica la carpeta `public/`.
+2. Abre `https://<tu-usuario>.github.io/<tu-repositorio>/` en el computador, en pantalla completa con la tecla **F**.
+3. Los teléfonos escanean el QR y se conectan por internet al broker EMQX de `public/config.js`.
 
-### Cabecera
+> La pantalla de MARTE debe quedar **visible**. Si la pestaña queda detrás de otra, el navegador pausa la animación y no asigna roles.
 
-Estado de la conexión, broker usado, selector de teléfono (*automático* usa el que más recientemente envió datos), latencia, sala (editable; **Nueva** crea otra) y **Activar audio**.
+### En local (pruebas rápidas)
 
-### Fuentes
+- **Primera vez:** necesitas [Node.js](https://nodejs.org) LTS instalado.
+- **`INICIAR-MARTE.bat`:** instala las dependencias la primera vez, arranca el servidor con su propio broker y abre `https://localhost:8443/`. Los teléfonos deben estar en la misma red y aceptar el aviso del certificado.
+- **`PROBAR-EMQX.bat`:** igual que en local, pero con el broker EMQX de `config.js` en `http://localhost:8080/?broker=cfg`. Sirve para probar EMQX antes de publicar. El micrófono no funciona en este modo, porque exige https.
 
-- **Audio:** oscilador (onda a elección: sierra, triángulo, seno, cuadrada) o un **archivo de audio** que se repite en bucle. Un osciloscopio muestra la salida.
-- **Imagen:** una animación generada, o un **archivo de video**. Casilla para mostrar u ocultar los toques del teléfono.
+### Teclas en el computador
 
-### Física del material
-
-La imagen (animación, video o cámara web) se dibuja en WebGL sobre una grilla de 96×54 puntos que los dedos deforman, como si tocaras la imagen. La deformación es temporal: se apaga sola en unos segundos ("recuperación", 2,5 s por defecto).
-
-| Material | Qué hace | Cómo responde al tacto |
-|---|---|---|
-| **Tela** | Se arrastra y se estira, ondula y vuelve. | El dedo arrastra la tela; la presión la hunde (sombra). Con varios dedos se estira entre ellos. |
-| **Agua** | Ondas que se expanden y se reflejan en los bordes. | Cada apoyo es una gota; al presionar emite anillos; al mover deja estela. |
-| **Squishy** | Gelatina: se abulta bajo el dedo y rebota. | Cuanto más presión, más se hunde; al soltar oscila y se asienta. |
-| **Remolino** | La imagen gira alrededor del dedo. | Mantener el toque aumenta el giro; mover arrastra el remolino. |
-
-Se elige con los botones de la tarjeta "Física del material" o con las teclas **1–5** (también en pantalla completa). Cuatro deslizadores ajustan el efecto: **intensidad**, **recuperación** (segundos), **tamaño del toque** y **relieve** (luz y sombra). Los cuatro aparecen como variables de salida en el grupo **Física** del panel de conexiones, así que se pueden controlar con un sensor (por ejemplo, `touch.f` → `fisica.intensidad`, o `ang.g` → `fisica.tamano`).
-
-La física usa por dedo: posición, desplazamiento y velocidad, presión (si el teléfono no la entrega, se asume 0,5) y diámetro del contacto (define el tamaño de la zona afectada). Si el navegador no permite WebGL, la imagen se muestra sin deformar.
-
-Para crear un material nuevo, edita `public/fisica.js`: agrega su apariencia en `MATERIALES` y su física en `step()`, y un botón en `exp.html`.
-
-### Conexiones
-
-Cada fila lleva una **entrada** a una **variable de salida**:
-
-| Control | Qué hace |
+| Tecla | Acción |
 |---|---|
-| Casilla | Activa o desactiva la conexión. |
-| Entrada → Salida | Qué canal controla qué variable. |
-| **Aprender** | Pulsa y mueve el teléfono (u opera el control): elige la entrada que más cambie durante 8 segundos. |
-| Rango de entrada | Qué parte del canal cuenta. Por ejemplo, `touch.d` de 10 a 90 px. |
-| Rango de salida | Entre qué valores se mueve la variable. |
-| Curva | *lineal*, *suave* (en S), *acelerada* (cuadrática) o *rápida* (raíz). |
-| Invertir | Da vuelta la relación (arriba = poco). |
-| Suavizado | Promedio con el valor anterior; 0 = instantáneo, cerca de 1 = muy lento. Quita el temblor. |
-| Medidor | Barra violeta (entrada normalizada), barra lima (salida), y los valores `entrada → salida`. |
-| ✕ | Elimina la conexión. |
-
-**Cómo se calcula** (en cada cuadro de pantalla, para cada conexión activa):
-
-1. Lee el canal. Si no hay dato, la conexión no actúa.
-2. Normaliza: `(valor − mínimo de entrada) / (máximo − mínimo)`, limitado a 0–1.
-3. Invierte si corresponde y aplica la curva.
-4. Suaviza con el valor del cuadro anterior.
-5. Escala al rango de salida. Las variables marcadas como logarítmicas (frecuencias) se escalan en proporción geométrica, que suena más natural.
-6. Escribe el resultado en la variable.
-
-**Reglas de comportamiento:**
-
-- Si dos conexiones apuntan a la misma variable, **gana la última de la lista**.
-- Cuando una variable deja de recibir control (se desactiva la conexión o se suelta el control), **vuelve a su valor base**.
-- Las variables tipo **disparador** (`audio.gate`) se comportan como interruptor: la entrada normalizada ≥ 0,5 las abre. Si el teléfono desaparece, el disparador se cierra.
-
-**Ejemplo incluido** (botón **Ejemplo**; se carga la primera vez):
-
-| Entrada | Salida | Efecto |
-|---|---|---|
-| `touch.down` | `audio.gate` | Suena solo mientras hay un dedo apoyado |
-| `touch.x` | `audio.tono` (−12…24 semitonos) | Izquierda–derecha cambia la nota |
-| `touch.y` | `audio.filtro` (200…9000 Hz, invertido) | Arriba abre el filtro |
-| `touch.n` | `audio.delay.mezcla` | Más dedos, más eco |
-| `touch.d` | `video.zoom` (1…2,2) | Un contacto más grande acerca la imagen |
-| `ang.g` | `video.tono` (0…360°) | Inclinar el teléfono rota el color |
-| `touch.f` | `video.brillo` (1…2) | Apretar ilumina |
-
-### Guardado
-
-Las conexiones se guardan solas en el navegador (`localStorage`), así que al volver siguen ahí. **Exportar** descarga un archivo `tacto-conexiones.json`; **Importar** lo carga en otro computador o navegador. El audio y el video que cargas **no** se guardan: hay que volver a elegirlos.
+| **F** | Pantalla completa |
+| **Q** | QR grande |
+| **A** | Avanzar |
+| **C** | Recalibrar la postura de los teléfonos |
+| **D** | Panel de prueba: telemetría, sala, sonidos cargados y simulación con el ratón |
 
 ---
 
-## 8. Variables de salida
+## 6. Estructura del proyecto
 
-Todas aparecen en el panel de forma automática.
-
-**Audio** (Web Audio). Cadena: fuente → envolvente (disparador) → filtro pasa-bajos → [directo | delay | reverb] → paneo → volumen → compresor → salida.
-
-| Variable | Rango | Notas |
-|---|---|---|
-| `audio.volumen` | 0–1 | |
-| `audio.frecuencia` | 60–2000 Hz | Solo con oscilador; logarítmica |
-| `audio.tono` | −24 a 24 semitonos | Afecta oscilador y archivo |
-| `audio.filtro` | 80–12000 Hz | Frecuencia de corte; logarítmica |
-| `audio.resonancia` | 0,1–20 | |
-| `audio.delay.mezcla` | 0–1 | Cantidad de eco |
-| `audio.delay.tiempo` | 0,02–1 s | |
-| `audio.delay.feedback` | 0–0,9 | Repeticiones del eco |
-| `audio.reverb.mezcla` | 0–1 | Reverberación sintética de 2,4 s |
-| `audio.pan` | −1 a 1 | Izquierda–derecha |
-| `audio.gate` | 0/1 | Suena / calla |
-
-**Imagen** (filtros y transformaciones CSS sobre el escenario).
-
-| Variable | Rango |
-|---|---|
-| `video.brillo`, `video.contraste` | 0,2–3 |
-| `video.saturacion` | 0–4 |
-| `video.tono` | 0–360° |
-| `video.desenfoque` | 0–20 px |
-| `video.invertir` | 0–1 |
-| `video.zoom` | 0,5–4 |
-| `video.rotacion` | ±180° |
-| `video.posx`, `video.posy` | ±50 % |
-| `video.opacidad` | 0–1 |
-| `video.velocidad` | 0,1–4 (animación y video) |
-| `video.posicion` | 0–1 (punto del video; solo con video) |
-
-**Agregar una variable propia:** en `exp.js`, sección SALIDAS, una línea basta:
-
-```js
-tgt('audio.mi.variable', 'Audio', 'etiqueta visible', min, max, valorBase, { apply: v => /* lo que haga */ });
+```
+├── README.md                 este documento
+├── INICIAR-MARTE.bat         arranque local (https, broker propio)
+├── PROBAR-EMQX.bat           prueba local con EMQX (http)
+├── server.js                 servidor local: páginas + broker MQTT (Aedes)
+├── package.json
+├── .github/workflows/        publicación automática en GitHub Pages
+├── herramientas/
+│   └── generar-rocas.py      genera los PNG de las rocas
+├── docs/                     documentación original de Tacto (referencia)
+└── public/                   lo que se publica
+    ├── index.html            pantalla del computador (el brazo)
+    ├── control.html          página del teléfono (el control)
+    ├── sonda.js              lógica, imagen y sonido de MARTE
+    ├── sonda.css             gráfica de la pantalla
+    ├── config.js             broker EMQX (usuario y contraseña)
+    ├── tacto.js              cliente MQTT de Tacto (base)
+    ├── ui.css · manifest.webmanifest · icon.svg · vendor/mqtt.min.js
+    └── assets/
+        ├── sonidos/          archivos de audio (ver 3.3)
+        └── img/              rocas PNG y suelo opcional
 ```
 
-Aparece sola en el panel. Para imagen existe el atajo `vt(id, etiqueta, min, max, base)`.
-
 ---
 
-## 9. Dos formas de montarlo
+## 7. Créditos
 
-| | **Local** (por defecto) | **Público** (GitHub Pages) |
-|---|---|---|
-| Quién sirve las páginas | `node server.js` | Las publicas en GitHub Pages |
-| Broker | El embebido (`/mqtt`) | Uno público de prueba (`wss://broker.emqx.io:8084/mqtt`) o uno tuyo |
-| Latencia | Baja (misma red) | La del servidor del broker |
-| Aviso de certificado | Sí (autofirmado) | No |
-| iPhone | Por verificar el WebSocket seguro con certificado autofirmado | Sin avisos |
-| Requiere | Node.js | Nada que ejecutar |
-
-**Cómo elige el broker `tacto.js`**, en este orden:
-
-1. Parámetro `?broker=wss://…` en la dirección.
-2. `TACTO_CONFIG.broker` en `config.js`.
-3. Si la página la sirve el servidor de Tacto (`/info` responde), su propio `/mqtt`.
-4. El broker público de prueba.
-
-**Con GitHub Pages** no hace falta configurar nada (usa el broker público). Para usar tu propio broker, o si la página del teléfono vive en otro sitio, edita `public/config.js`:
-
-```js
-window.TACTO_CONFIG = {
-  broker: 'wss://mi-broker.example.com:8884/mqtt',     // opcional
-  phoneUrl: 'https://tu-usuario.github.io/tacto/',     // opcional: por defecto, la carpeta donde está exp.html
-};
-```
-
-En este modo la experiencia genera el QR en el navegador y muestra la dirección completa, con la sala y el broker incluidos.
-
-**Ojo con el broker público:** cualquiera que conozca (o adivine) tu sala puede leer y publicar en ella. Usa una sala larga y no mandes nada sensible. Si el curso lo necesita, un broker propio (Mosquitto, EMQX, HiveMQ Cloud) elimina el problema.
-
----
-
-### Velocidad: cuándo usar cada modo
-
-El modo público es más lento porque cada mensaje viaja hasta el servidor del broker y vuelve. Medido desde Chile (ida y vuelta de un mensaje, mediana de 20):
-
-| Broker | Ida y vuelta |
-|---|---|
-| Local (`node server.js`, misma red) | ~7 ms |
-| `broker.emqx.io` (público, usado por Pages) | ~210 ms |
-| `broker.hivemq.com` (público) | ~240 ms |
-
-Esa diferencia se nota al tocar y oír el sonido, y no se corrige con código: depende de la distancia al servidor.
-
-- **Para trabajar, ensayar y presentar en vivo: modo local.** Es unas 30 veces más rápido. Usa `node server.js` con el teléfono en el hotspot.
-- **Para compartir, mostrar el proyecto o probar desde cualquier lugar: GitHub Pages.** Funciona sin instalar nada, pero con ~200 ms de retraso.
-- **Si necesitas Pages y menos retraso:** crea un broker propio en la región más cercana (HiveMQ Cloud, EMQX Cloud…) y ponlo en `config.js`. Mide el resultado con la latencia que muestra la cabecera de la experiencia.
-
-Pages y el broker local no se pueden mezclar para el teléfono: Pages usa HTTPS, y el navegador bloquea las conexiones inseguras desde una página HTTPS; un broker local con certificado autofirmado genera avisos y puede fallar en iPhone.
-
-### Publicar en GitHub Pages, paso a paso
-
-El repositorio ya trae todo lo necesario: la carpeta `public/` es el sitio completo (incluye `vendor/mqtt.min.js`, así que no depende de internet para cargar MQTT), y `.github/workflows/pages.yml` lo publica solo.
-
-1. Crea un repositorio en GitHub y sube el proyecto (la rama debe llamarse `main`).
-2. En el repositorio: **Settings → Pages → Build and deployment → Source: GitHub Actions**.
-3. Cada vez que subas cambios a `main`, la acción **Publicar en GitHub Pages** publica `public/`. Su estado se ve en la pestaña **Actions**.
-4. El sitio queda en `https://<usuario>.github.io/<repositorio>/`:
-   - **Teléfono:** `https://<usuario>.github.io/<repositorio>/` (es `index.html`).
-   - **Experiencia (computador):** `https://<usuario>.github.io/<repositorio>/exp.html`.
-5. Abre la experiencia en el computador. Muestra la sala, el QR y la dirección para el teléfono (con la sala y el broker ya incluidos). Escanea el QR y listo: no hay avisos de certificado, porque GitHub Pages tiene HTTPS válido.
-
-En este modo no corre `node server.js`; el intermediario es el **broker público** (`broker.emqx.io`) o el que pongas en `config.js`. El QR se genera en el navegador (carga una pequeña librería desde internet; sin internet queda la dirección escrita). Cada estudiante puede hacer un *fork* del repositorio y publicar el suyo.
-
-Diferencias con el modo local:
-
-- No hay QR por `/qr.svg` ni puerto TCP 1883; las otras herramientas MQTT deben conectarse al broker público (por WebSocket o por el puerto que ese broker ofrezca).
-- Cualquiera que adivine tu sala puede leer y escribir en ella. Evítalo con salas largas, o usando un broker propio.
-- Si el sitio estuviera en un subdirectorio distinto, todas las rutas son relativas y siguen funcionando.
-
-## 10. Usar Tacto en tus propias experiencias
-
-Copia `public/tacto.js` (y `config.js` si usas broker propio) a tu proyecto. Funciona en cualquier página, sin librerías extra (carga `mqtt.js` por sí sola).
-
-```html
-<script src="config.js"></script>
-<script src="tacto.js"></script>
-<script>
-  const t = new Tacto();            // sala guardada, o la de ?sala=abc123
-  t.on('estado', s => console.log('conexión:', s));
-  t.connect().then(() => {
-    (function loop() {
-      const x = t.get('touch.x');   // último valor del canal, o null si aún no hay datos
-      const d = t.get('touch.d');
-      if (x != null) miSonido.frecuencia = 200 + x * 800;
-      requestAnimationFrame(loop);
-    })();
-  });
-</script>
-```
-
-API de la clase `Tacto`:
-
-| Miembro | Descripción |
-|---|---|
-| `new Tacto({ sala })` | Crea el cliente. Sin `sala`, usa `?sala=`, la guardada o una nueva. |
-| `connect()` | Se conecta al broker y se suscribe a la sala. Devuelve una promesa. |
-| `get(canal, [dispositivo])` | Último valor del canal (del teléfono elegido, o el más activo). |
-| `on(evento, fn)` | Eventos: `datos` (cada mensaje), `estado`, `dispositivo`, `rtt`, `error`. |
-| `cambiarSala(código)` | Cambia de sala sin recargar. |
-| `devices` | Diccionario de teléfonos vistos: nombre, conexión, canales, capacidades, latencias. |
-| `sel`, `pick()` | Teléfono elegido (`'auto'` por defecto) y el dispositivo resultante. |
-| `Tacto.CHANNELS` | Catálogo de canales (nombre, etiqueta, rango, grupo). |
-
-`exp.html` + `exp.js` son un ejemplo completo y legible: puedes partir de ahí.
-
----
-
-## 11. Otras herramientas MQTT
-
-El broker embebido también escucha por TCP en el puerto **1883**, así que cualquier cliente MQTT puede leer (o publicar) los mismos temas:
-
-```bash
-mosquitto_sub -h <ip-del-computador> -t "tacto/#" -v
-```
-
-También sirven **MQTT Explorer** (interfaz gráfica para ver los temas en vivo), **Node-RED**, scripts en Python (`paho-mqtt`), o un **ESP32/Arduino** suscrito a `tacto/<sala>/+/touch`: el teléfono puede mover un motor o una luz. Es una buena forma de mostrar a los estudiantes que el tacto es solo datos que cualquiera puede consumir.
-
----
-
-## 12. Variables de entorno del servidor
-
-| Variable | Por defecto | Para qué |
-|---|---|---|
-| `PORT` | `8443` | Puerto de las páginas y del WebSocket MQTT |
-| `HOST_IP` | primera IP de la red | Fuerza qué IP se muestra en el QR (útil con varios adaptadores) |
-| `MQTT_TCP` | `1883` | Puerto TCP del broker; `0` lo desactiva |
-| `HTTP` | — | `HTTP=1` sirve sin HTTPS (para túneles o hosting que ya ponen el certificado) |
-| `PUBLIC_URL` | — | Dirección pública que se usa en el QR (túneles) |
-
-En PowerShell: `$env:HOST_IP="172.20.10.2"; node server.js`. En bash: `HOST_IP=172.20.10.2 node server.js`.
-
----
-
-## 13. Limitaciones conocidas
-
-- **Presión y diámetro dependen del hardware.** Algunos iPhone no entregan presión útil; ver sección 4.
-- **Pantalla bloqueada = sin datos.** Los navegadores móviles suspenden los sensores y los eventos de la página en segundo plano.
-- **iOS:** el permiso de movimiento se pide una sola vez por sesión de Safari y debe venir de un toque del usuario. Hay que usar HTTPS para el giro.
-- **Certificado autofirmado:** genera un aviso en cada dispositivo la primera vez. Si Safari en iPhone rechaza el WebSocket seguro con ese certificado, el camino alternativo es GitHub Pages con broker público (sección 9). Esto está por confirmar con teléfonos reales.
-- **No se graba ni reproduce la señal.** Encaja bien como un cliente MQTT más (grabar los temas y volver a publicarlos); no está en esta versión.
-- **Lo que la web no entrega en iOS:** LiDAR, AirPods y Apple Watch no son accesibles desde el navegador.
-- **Cámara:** solo movimiento y brillo; no hay visión de manos ni cuerpo en esta versión.
-
----
-
-## 14. Solución de problemas
-
-| Síntoma | Causa probable y solución |
-|---|---|
-| El teléfono no carga la página | No está en la misma red que el computador, o el cortafuegos bloquea Node. Prueba con el hotspot del teléfono; la regla de Windows para Node.js debe permitir redes privadas/públicas. |
-| La página carga pero dice "Reconectando" | Safari rechaza el WebSocket con certificado autofirmado. Abre primero `https://<ip>:8443` y acepta el aviso; si persiste, usa el modo GitHub Pages con broker público. |
-| Conecta pero la experiencia no ve el teléfono | Las salas no coinciden. Escanea el QR otra vez, o copia el código de la cabecera de la experiencia. |
-| No suena | Falta **Activar audio**, o ninguna conexión abre `audio.gate`: toca la pantalla del teléfono (el ejemplo solo suena con un dedo apoyado). |
-| El giro no cambia | No se aceptó el permiso de movimiento, o la página no está en HTTPS. En iPhone, cierra Safari por completo y entra de nuevo. |
-| La presión dice "sin dato" o "constante" | El teléfono no la mide. Usa `touch.d` (diámetro) como sustituto. |
-| `npm start` falla en PowerShell | Política de ejecución de scripts. Usa `node server.js`. |
-| Varias IP en la lista y el QR apunta a la equivocada | Fuerza la correcta con `HOST_IP`. |
-| El puerto 8443 o 1883 está ocupado | Hay otra copia del servidor corriendo. Ciérrala, o cambia `PORT` / `MQTT_TCP`. |
-| Mucha latencia | Revisa la cifra en la cabecera. Con el broker público son ~200 ms; en modo local, ~7 ms. Ver "Velocidad: cuándo usar cada modo". |
+- Basado en **Tacto**, de fefeliperoar ([github.com/fefeliperoar/tacto](https://github.com/fefeliperoar/tacto)), que aporta el protocolo, el cliente MQTT y el servidor local. Su documentación original está en `docs/TACTO.md`.
+- Librerías: [MQTT.js](https://github.com/mqttjs/MQTT.js), [Aedes](https://github.com/moscajs/aedes), [qrcode-generator](https://github.com/kazuhikoarase/qrcode-generator).
+- Tipografías: IBM Plex Mono y Space Grotesk (Google Fonts, SIL Open Font License).
+- Sonidos e imágenes: ver 3.3 y 3.4.

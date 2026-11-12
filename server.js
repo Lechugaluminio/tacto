@@ -1,5 +1,5 @@
 // Tacto: el teléfono como control remoto de una experiencia web.
-//   teléfono (web) --MQTT/WebSocket--> broker MQTT (este mismo proceso) --> experiencia web (/exp)
+//   teléfono (control.html) --MQTT/WebSocket--> broker MQTT (este mismo proceso) --> pantalla de MARTE (/)
 // Sirve las páginas por HTTPS (certificado autofirmado) y trae un broker MQTT embebido:
 //   · MQTT sobre WebSocket en  /mqtt   (navegadores)
 //   · MQTT sobre TCP en el puerto 1883  (Arduino/ESP32, Node-RED, Python, MQTT Explorer…)
@@ -32,7 +32,7 @@ const app = express();
 const pub = path.join(__dirname, 'public');
 app.use(express.static(pub));
 app.use('/vendor', express.static(path.join(__dirname, 'node_modules', 'mqtt', 'dist'))); // mqtt.min.js sin depender de internet
-app.get('/exp', (_, res) => res.sendFile(path.join(pub, 'exp.html')));
+app.get('/sonda', (_, res) => res.redirect('/')); // MARTE vive en la raíz; el teléfono usa /control.html
 app.get('/info', (_, res) => res.json({ baseUrl, mqtt: true, mqttTcp: MQTT_TCP || null }));
 app.get('/qr.svg', async (req, res) => {
   const u = String(req.query.u || baseUrl).slice(0, 400);
@@ -77,9 +77,9 @@ if (PLAIN_HTTP) {
 
   server.listen(PORT, '0.0.0.0', () => {
     const local = `${scheme}://localhost:${PORT}`;
-    console.log('\n  Tacto');
-    console.log('  Experiencia (laptop):   %s/exp', local);
-    console.log('  Teléfonos entran a:     %s   (la experiencia muestra el QR con la sala)', baseUrl);
+    console.log('\n  MARTE · sobre Tacto');
+    console.log('  MARTE (computador):    %s/', local);
+    console.log('  Teléfonos entran a:     %s/control.html   (mejor por el QR de la esquina, trae la sala)', baseUrl);
     if (LAN.length > 1) console.log('  Otras direcciones: %s  (fuerza una con HOST_IP=...)', LAN.map(ip => `${scheme}://${ip}:${PORT}`).join('  '));
     console.log('  Broker MQTT:  %s://localhost:%d/mqtt%s\n', PLAIN_HTTP ? 'ws' : 'wss', PORT, MQTT_TCP ? `   ·   tcp :${MQTT_TCP}` : '');
   });

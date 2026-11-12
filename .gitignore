@@ -4,3 +4,8 @@ _v1/
 *.zip
 .DS_Store
 Thumbs.db
+_to_delete/
+acople-log.txt
+marte-log.txt
+emqx-log.txt
+*-log.txt
